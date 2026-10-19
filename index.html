@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="RaktTrace concept simulation by Team Veritas (AgentOps 2026): an agent that keeps an urgent blood request open until a blood centre confirms the units.">
+<title>RaktTrace Concept Simulation</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: header → scenario picker → sticky story bar (clock, narration, controls) → two lanes (today vs RaktTrace) → benchmark. Neutral surfaces, one red accent for confirmed blood. */
+:root {
+  --bg: #F4F4F2; --surface: #FFFFFF; --sunk: #F7F7F5; --ink: #1D1D1F; --muted: #6B6B70; --line: #E3E3E0;
+  --accent: #B3261E; --accent-soft: #FBEAE8; --ok: #1E6B45; --ok-soft: #E5F2EA; --warn: #8A5A00; --warn-soft: #FBF1DC;
+  --dark: #2B2B2E; --dark-fg: #FFFFFF; --fade: #CFCFCB;
+  --sans: "IBM Plex Sans", "Segoe UI", Roboto, Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #141415; --surface: #1C1C1E; --sunk: #232326; --ink: #F2F2F3; --muted: #A1A1A6; --line: #313135;
+  --accent: #FF6B5E; --accent-soft: #3A1E1C; --ok: #5FD394; --ok-soft: #173426; --warn: #F2B84B; --warn-soft: #3A2F17;
+  --dark: #E8E8EA; --dark-fg: #141415; --fade: #4A4A4F; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #141415; --surface: #1C1C1E; --sunk: #232326; --ink: #F2F2F3; --muted: #A1A1A6; --line: #313135;
+  --accent: #FF6B5E; --accent-soft: #3A1E1C; --ok: #5FD394; --ok-soft: #173426; --warn: #F2B84B; --warn-soft: #3A2F17;
+  --dark: #E8E8EA; --dark-fg: #141415; --fade: #4A4A4F; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.5; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+.wrap { max-width: 1160px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 48px; }
+h1 { font-size: clamp(26px, 4vw, 34px); font-weight: 700; letter-spacing: -0.015em; margin: 0; }
+h2 { font-size: 18px; font-weight: 600; margin: 0; }
+h3 { font-size: 15px; font-weight: 600; margin: 0; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.label { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+
+header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px 32px; align-items: flex-end; margin-bottom: 22px; }
+header .lede { max-width: 640px; margin-top: 8px; color: var(--muted); font-size: 16px; }
+.note-chip { font-size: 12.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; background: var(--surface); }
+
+/* scenario picker */
+.scenarios { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+.scn { text-align: left; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
+.scn b { font-weight: 600; font-size: 14.5px; }
+.scn span { font-size: 13px; color: var(--muted); line-height: 1.4; }
+.scn[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.scn:focus-visible, button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* story bar */
+.story { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; padding: 14px 16px; display: grid; grid-template-columns: auto 1fr auto; gap: 8px 18px; align-items: center; margin-bottom: 16px; box-shadow: 0 6px 16px -14px rgba(0,0,0,.35); }
+.clock { font-family: var(--mono); font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.clock small { display: block; font-family: var(--sans); font-size: 12px; font-weight: 500; color: var(--muted); }
+.narr { font-size: 15.5px; line-height: 1.45; min-width: 0; }
+.narr .who { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--accent); display: block; margin-bottom: 1px; }
+.ctrls { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+button { font: inherit; font-size: 14px; font-weight: 500; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 14px; cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+button:disabled { opacity: .45; cursor: default; }
+.bar { grid-column: 1 / -1; height: 3px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+
+/* request */
+.request { padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 18px; margin-bottom: 16px; }
+.msg { font-family: var(--mono); font-size: 13.5px; background: var(--sunk); border-radius: 8px; padding: 10px 12px; margin-top: 6px; overflow-wrap: anywhere; }
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 16px; align-content: start; }
+.facts div { font-size: 14px; }
+.facts b { display: block; font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
+
+/* lanes */
+.lanes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.lane { padding: 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.lane.agent { border-color: var(--ink); }
+.lhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.lhead p { font-size: 13.5px; color: var(--muted); margin-top: 3px; max-width: 46ch; }
+.status { font-size: 12.5px; font-weight: 600; padding: 5px 10px; border-radius: 999px; background: var(--sunk); color: var(--muted); white-space: nowrap; }
+.status.done { background: var(--ok-soft); color: var(--ok); }
+.status.conf { background: var(--accent); color: #fff; }
+.status.warn { background: var(--warn-soft); color: var(--warn); }
+
+.verdict { border-radius: 8px; padding: 10px 12px; font-weight: 600; }
+.verdict small { display: block; font-weight: 400; color: var(--ink); font-size: 13.5px; margin-top: 2px; }
+.verdict.bad { background: var(--accent-soft); color: var(--accent); }
+.verdict.good { background: var(--ok-soft); color: var(--ok); }
+
+.chance { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: center; background: var(--sunk); border-radius: 8px; padding: 12px 14px; }
+.chance .num { font-family: var(--mono); font-size: 32px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1; }
+.chance .cap { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.chance svg { width: 100%; height: 54px; display: block; }
+
+.sect { display: flex; flex-direction: column; gap: 6px; }
+.rows { display: flex; flex-direction: column; gap: 6px; }
+.row { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; align-items: center; font-size: 14px; }
+.row .k { font-size: 12px; color: var(--muted); font-weight: 500; }
+.pill { border-radius: 6px; padding: 7px 10px; border: 1px dashed var(--fade); color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+.pill.conf { background: var(--accent); border: 1px solid var(--accent); color: #fff; font-weight: 500; }
+.pill.way { background: var(--dark); border: 1px solid var(--dark); color: var(--dark-fg); }
+.pill.yes { background: var(--ok-soft); border: 1px solid transparent; color: var(--ok); font-weight: 500; }
+.pill.stand { border: 1px solid var(--ink); color: var(--ink); }
+
+.centres { display: flex; flex-wrap: wrap; gap: 6px; }
+.ctr { font-size: 13px; border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; background: var(--surface); }
+.ctr b { font-weight: 600; }
+.ctr.check { border-color: var(--warn); background: var(--warn-soft); }
+.ctr.ok { border-color: var(--ok); background: var(--ok-soft); }
+.ctr.bad { border-color: var(--fade); color: var(--muted); text-decoration: line-through; text-decoration-color: var(--fade); }
+.ctr.res { border-color: var(--accent); background: var(--accent-soft); }
+
+.nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.nums div { background: var(--sunk); border-radius: 8px; padding: 8px 10px; }
+.nums b { display: block; font-family: var(--mono); font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.nums span { font-size: 12px; color: var(--muted); line-height: 1.3; display: block; }
+
+.dgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(16px, 1fr)); gap: 4px; }
+.d { aspect-ratio: 1; border-radius: 3px; border: 1px solid var(--line); background: var(--surface); }
+.d.messaged { background: var(--fade); border-color: var(--fade); }
+.d.declined { background: var(--sunk); border-color: var(--fade); }
+.d.late { background: var(--warn); border-color: var(--warn); }
+.d.commit { background: var(--dark); border-color: var(--dark); }
+.d.standby { border: 2px solid var(--dark); }
+.d.collected { background: var(--accent); border-color: var(--accent); }
+.d.deferred { background: repeating-linear-gradient(45deg, var(--fade) 0 2px, transparent 2px 5px); border-color: var(--fade); }
+.d.noshow { background: repeating-linear-gradient(45deg, var(--warn) 0 2px, transparent 2px 5px); border-color: var(--warn); }
+.d.released { border-style: dashed; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend .d { width: 11px; height: 11px; display: inline-block; }
+
+details.logbox summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--muted); list-style: none; display: flex; justify-content: space-between; }
+details.logbox summary::-webkit-details-marker { display: none; }
+details.logbox summary::after { content: "Show"; font-weight: 500; }
+details.logbox[open] summary::after { content: "Hide"; }
+.log { list-style: none; margin: 8px 0 0; padding: 0; max-height: 300px; overflow-y: auto; border-top: 1px solid var(--line); }
+.log li { display: grid; grid-template-columns: 46px minmax(0, 1fr); gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.log .t { font-family: var(--mono); font-size: 12px; color: var(--muted); padding-top: 1px; }
+.log .tag { font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin-right: 6px; }
+.log .tag.decide { color: var(--ink); }
+.log .tag.done { color: var(--accent); }
+.log .tag.warn { color: var(--warn); }
+.log q { font-style: italic; quotes: "“" "”"; }
+.log code { font-family: var(--mono); font-size: 12px; background: var(--sunk); border-radius: 4px; padding: 2px 6px; display: inline-block; margin-top: 4px; overflow-wrap: anywhere; }
+.log .why { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+.how { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0 0; }
+.how .card { padding: 14px 16px; }
+.how p { color: var(--muted); font-size: 14px; margin-top: 4px; }
+
+.bench { margin-top: 20px; padding: 18px; }
+.bench .top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 12px; }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 14px; }
+th { text-align: left; font-size: 11.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 8px; border-bottom: 1px solid var(--line); }
+td { padding: 10px 8px; border-bottom: 1px solid var(--line); }
+td.n, th.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+tr.us td { font-weight: 600; background: var(--accent-soft); }
+.fine { font-size: 12.5px; color: var(--muted); margin-top: 10px; max-width: 85ch; }
+select { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
+footer { margin-top: 28px; font-size: 12.5px; color: var(--muted); }
+
+@media (max-width: 900px) {
+  .scenarios { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .request { grid-template-columns: 1fr; }
+  .lanes, .how { grid-template-columns: 1fr; }
+  .story { grid-template-columns: auto 1fr; }
+  .ctrls { grid-column: 1 / -1; justify-content: flex-start; }
+}
+@media (max-width: 520px) {
+  .story { position: static; }
+  .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .clock { font-size: 22px; }
+  .chance .num { font-size: 26px; }
+  .nums b { font-size: 17px; }
+}
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="label">Team Veritas · AgentOps 2026</div>
+      <h1>RaktTrace concept simulation</h1>
+      <p class="lede">One urgent blood request, handled two ways. On the left, how it usually goes today. On the right, the RaktTrace agent. Press <b>Next step</b> to walk through it, and see who actually had blood ready at the deadline.</p>
+    </div>
+    <div class="note-chip">Synthetic data · no real donors or messages</div>
+  </header>
+
+  <div class="scenarios" role="group" aria-label="Choose a scenario" id="scenarios"></div>
+
+  <section class="card story" aria-live="polite">
+    <div class="clock" id="clock">21:40<small id="deadline">deadline</small></div>
+    <div class="narr" id="narr"></div>
+    <div class="ctrls">
+      <button class="primary" id="next">Next step</button>
+      <button id="play">Auto-play</button>
+      <button id="restart">Restart</button>
+    </div>
+    <div class="bar" aria-hidden="true"><i id="prog"></i></div>
+  </section>
+
+  <section class="card request" aria-label="The request">
+    <div>
+      <div class="label">The request, as it was forwarded</div>
+      <div class="msg" id="msg"></div>
+      <p class="muted" style="font-size:13.5px;margin-top:8px" id="msgnote"></p>
+    </div>
+    <div class="facts" id="facts"></div>
+  </section>
+
+  <div class="lanes">
+    <section class="card lane" id="laneB" aria-label="Today"></section>
+    <section class="card lane agent" id="laneA" aria-label="RaktTrace"></section>
+  </div>
+
+  <div class="how">
+    <div class="card"><h3>Stock first</h3><p>Old listings are treated as unconfirmed. The agent asks every nearby blood centre to confirm, and only messages donors if stock can’t cover the need.</p></div>
+    <div class="card"><h3>One number decides</h3><p>The agent keeps a live chance that all units are ready by the deadline, counting testing time. Below 90% it messages a few more donors. Below 30% it hands over to a person.</p></div>
+    <div class="card"><h3>Done means confirmed</h3><p>A request closes only when a blood centre confirms the units. Then everyone is stood down and the family gets a “please stop forwarding” message.</p></div>
+  </div>
+
+  <section class="card bench" aria-label="Benchmark">
+    <div class="top">
+      <div><div class="label">One run is a story. Many runs are evidence.</div><h2>Run it on many random requests</h2></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <label for="benchN" class="muted" style="font-size:13.5px">Requests</label>
+        <select id="benchN"><option>200</option><option selected>500</option><option>1000</option></select>
+        <button class="primary" id="runBench">Run</button>
+      </div>
+    </div>
+    <div class="tbl" id="benchOut"><p class="muted">Both approaches get the same blood centres, donors and replies. Only the decisions differ.</p></div>
+    <p class="fine">Half the requests are whole blood with short deadlines (where stock matters), half are single-donor platelets (where donors matter). Assumed: a donated unit needs 12 hours of testing for whole blood and 6 hours for platelets; 30% of yes replies are for a later time; 12–25% of willing donors are deferred at screening. These are behaviour checks on synthetic data, not real-world results.</p>
+  </section>
+
+  <footer>RaktTrace · Team Veritas (Suryansh Singh, Aditya Dev) · Concept simulation made during ideation to explain the idea. The actual system will be built at the event.</footer>
+</div>
+
+<script>
+(() => {
+const GRID = [0.3, 0.55, 0.8, 1.05, 1.3], PRIOR = [.2, .25, .25, .2, .1];
+const NO_RATE = 0.35, MEAN_DELAY = 30, TARGET = 0.9, ESC = 0.3, START = 21 * 60 + 40;
+
+const rng = seed => { let a = (seed * 2654435761) >>> 0; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; };
+const clock = m => { const x = ((START + Math.round(m)) % 1440 + 1440) % 1440; return String(Math.floor(x / 60)).padStart(2, "0") + ":" + String(x % 60).padStart(2, "0"); };
+const when = m => (START + m >= 1440 ? "tomorrow " : "") + clock(m);
+const pl = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const pct = x => Math.round(x * 100) + "%";
+const hrs = m => m >= 60 ? (Math.round(m / 6) / 10) + " h" : Math.round(m) + " min";
+
+const COMP = {
+  wb: { name: "Whole blood (PRBC)", short: "PRBC", test: 720, collect: 30, defer: 0.12 },
+  sdp: { name: "Single-donor platelets", short: "platelets", test: 360, collect: 90, defer: 0.25 },
+};
+const TXT = {
+  now: ["Haan bhai, abhi nikalta hoon", "Yes, I can come now. Send the location", "ok coming, 30 min", "haan aa sakta hoon abhi", "Sure, leaving in 10 min"],
+  tom: ["haan pakka, kal subah {T} tak aa jaunga", "Can come tomorrow around {T}", "aaj nahi, kal {T} ke baad free hoon", "Yes, after my shift, around {T} tomorrow"],
+  tonight: ["haan, {T} ke baad aa sakta hoon", "Can come around {T}, is that ok?"],
+  no: ["sorry bhai, last month hi donate kiya", "Not in Bengaluru this week", "nahi ho payega", "Can't, I'm unwell"],
+};
+const kwYes = s => /haan|yes|\bok\b|pakka|coming|aa (sakta|jaunga)|can come|sure|free hoon/i.test(s) && !/nahi ho|sorry|can't|not in/i.test(s);
+
+// ---------- world ----------
+function makeWorld(seed, p) {
+  const r = rng(seed), U = (a, b) => a + (b - a) * r(), pick = a => a[Math.floor(r() * a.length)], ex = m => -m * Math.log(1 - r());
+  const gam = k => { let s = 0; for (let i = 0; i < k; i++) s += ex(1); return s; };
+  const comp = COMP[p.comp], T = p.T, need = p.need;
+  let x = r(), mi = 0; for (; mi < 4; mi++) { x -= PRIOR[mi]; if (x < 0) break; }
+  const m = GRID[mi] * (p.respMul ?? 1), md = U(15, 45);
+  const donors = [];
+  for (let i = 0; i < p.n; i++) {
+    const g1 = gam(2), g2 = gam(6), pr = Math.min(.9, Math.max(.03, g1 / (g1 + g2)));
+    const travel = p.travel ? U(p.travel[0], p.travel[1]) : U(12, 70);
+    const yes = r() < Math.min(.95, pr * m), later = yes && r() < (p.later ?? 0.3), no = !yes && r() < NO_RATE;
+    const availAt = later ? Math.round(U(120, 960) / 15) * 15 : 0, deferred = r() < comp.defer;
+    let kind = yes ? (later ? "later" : "now") : (no ? "no" : null), text = null;
+    if (kind === "later") text = pick(START + availAt >= 1440 ? TXT.tom : TXT.tonight).replace("{T}", clock(availAt));
+    else if (kind) text = pick(TXT[kind]);
+    donors.push({ i, id: "D-" + (101 + ((i * 37 + seed) % 899)), p: pr, delay: ex(md), travel, yes, later, availAt, deferred, kind, text, km: Math.max(1, Math.round(travel / 3)) });
+  }
+  const centres = p.centres.map(c => ({ ...c, true: c.true ?? (r() < Math.exp(-c.age / 300) ? c.listed : Math.floor(r() * Math.max(1, c.listed))) }));
+  const order = donors.map(d => d.i).sort((a, b) => donors[b].p / (donors[b].travel / 30) - donors[a].p / (donors[a].travel / 30));
+  return { seed, comp, compKey: p.comp, T, need, group: p.group, donors, centres, order, n: p.n, tick: T <= 400 ? 5 : 10, dupAt: p.dupAt ?? null, skipped: p.skipped ?? 0, msg: p.msg, patient: p.patient };
+}
+function randomPreset(r) {
+  const U = (a, b) => a + (b - a) * r(), pick = a => a[Math.floor(r() * a.length)];
+  const wb = r() < 0.5, nc = 2 + Math.floor(r() * 3);
+  const centres = Array.from({ length: nc }, (_, k) => ({ name: "Centre " + "ABCD"[k], km: Math.round(U(2, 15)), listed: pick([0, 0, 1, 2, 3]), age: pick([20, 90, 300, 900]), vdelay: Math.round(U(10, 30)) }));
+  return wb ? { comp: "wb", T: pick([240, 360, 720]), need: pick([1, 2, 2, 3]), n: Math.floor(U(15, 60)), group: pick(["B+", "O+", "A+", "AB+"]), centres }
+            : { comp: "sdp", T: pick([600, 980, 1200]), need: 1, n: Math.floor(U(15, 60)), group: pick(["B+", "O+", "A+"]), centres: centres.map(c => ({ ...c, listed: Math.min(c.listed, 1) })) };
+}
+
+const SCENARIOS = {
+  stock: { title: "Surgery tonight", sub: "2 units of B+ by 01:40. Is the listed stock real?",
+    p: { comp: "wb", T: 240, need: 2, n: 30, group: "B+", dupAt: 10, skipped: 3, patient: "ICU patient, surgery tonight",
+      msg: "URGENT!! B+ blood chahiye 2 unit, ICU, aaj raat operation hai. Pls share. Contact 98xxxxxx21",
+      centres: [{ name: "Centre A", km: 3, listed: 3, age: 1140, true: 1, vdelay: 15 }, { name: "Centre B", km: 6, listed: 2, age: 40, true: 2, vdelay: 20 }, { name: "Centre C", km: 9, listed: 0, age: 120, true: 0, vdelay: 15 }, { name: "Centre D", km: 14, listed: 1, age: 300, true: 1, vdelay: 25 }] } },
+  dengue: { title: "Dengue, platelets", sub: "Single-donor platelets by 2 PM tomorrow. Stock is empty.",
+    p: { comp: "sdp", T: 980, need: 1, n: 32, group: "O+", later: 0.4, dupAt: 30, skipped: 4, patient: "Dengue patient, platelets falling",
+      msg: "Need O+ SDP platelet donor urgently, dengue patient, platelet count 18k. Manipal hospital. Pls forward 🙏",
+      centres: [{ name: "Centre A", km: 3, listed: 1, age: 900, true: 0, vdelay: 20 }, { name: "Centre B", km: 7, listed: 0, age: 60, true: 0, vdelay: 15 }, { name: "Centre C", km: 12, listed: 0, age: 200, true: 0, vdelay: 15 }] } },
+  rare: { title: "Rare group", sub: "Bombay (hh), 2 units by 8 PM tomorrow. Few donors, far away.",
+    p: { comp: "wb", T: 1340, need: 2, n: 14, group: "Bombay (hh)", respMul: 1.0, later: 0.35, travel: [40, 300], skipped: 0, patient: "Post-partum bleeding, rare group",
+      msg: "Bombay blood group (hh) needed, 2 units, Lady Goschen hospital Mangaluru. Very rare, please share widely",
+      centres: [{ name: "Centre A", km: 2, listed: 0, age: 60, true: 0, vdelay: 15 }, { name: "Centre B", km: 18, listed: 0, age: 400, true: 0, vdelay: 15 }] } },
+  random: { title: "Random request", sub: "A new random case each time.", p: null },
+};
+
+function pAtLeast(ps, k) { if (k <= 0) return 1; let d = new Array(k + 1).fill(0); d[0] = 1; for (const q of ps) { const nd = d.map(v => v * (1 - q)); for (let j = 1; j <= k; j++) nd[j] += d[j - 1] * q; nd[k] += d[k] * q; d = nd; } return d[k]; }
+
+// ---------- lanes ----------
+function makeLane(w, agent, reader) {
+  return { w, agent, reader, contacted: new Array(w.n).fill(-1), seen: new Array(w.n).fill(false), state: new Array(w.n).fill(""),
+    committed: new Map(), standby: [], units: [], confirmed: 0, real: 0, cstate: w.centres.map(() => "listed"), cfound: w.centres.map(() => null),
+    closedAt: null, escalatedAt: null, msgs: 0, lastWave: -1e9, post: PRIOR.slice(), log: [], pHist: [], P: null, claims: [], stockClaim: 0,
+    picked: null, pickedArrive: null, said: null, noDonorNote: false };
+}
+const add = (L, t, tag, html, plain) => { L.log.push({ t, tag, html, plain }); };
+const mhat = L => L.post.reduce((s, v, j) => s + v * GRID[j], 0);
+function budget(L, i, t) { const w = L.w, d = w.donors[i]; return w.T - t - d.travel - w.comp.collect - w.comp.test; }
+function qOf(L, i, t, since) {
+  const b = budget(L, i, t); if (b <= 0) return 0;
+  let pm = Math.min(.95, L.w.donors[i].p * mhat(L));
+  if (since > 0) { const s = Math.exp(-since / MEAN_DELAY); pm = pm * s / Math.max(1 - (pm + (1 - pm) * NO_RATE) * (1 - s), 1e-6); }
+  return pm * (1 - Math.exp(-b / MEAN_DELAY)) * 0.7 * (1 - L.w.comp.defer);
+}
+function paths(L, t) {
+  const w = L.w, out = [], rem = w.need - L.confirmed, rt = w.comp.collect + w.comp.test;
+  for (const [, c] of L.committed) out.push(c.believed + rt <= w.T ? 1 - w.comp.defer : 0);
+  for (const j of L.standby) out.push(t + w.donors[j].travel + rt <= w.T ? (1 - w.comp.defer) * .9 : 0);
+  for (let i = 0; i < w.n; i++) if (L.contacted[i] >= 0 && !L.seen[i]) out.push(qOf(L, i, t, t - L.contacted[i]));
+  w.centres.forEach((c, k) => { if (L.cstate[k] === "check") for (let u = 0; u < Math.min(c.listed, rem); u++) out.push(Math.exp(-c.age / 300)); });
+  return out;
+}
+
+function stepAgent(L, t) {
+  const w = L.w, rt = w.comp.collect + w.comp.test, closed = () => L.closedAt !== null;
+  if (t === 0) {
+    const listed = w.centres.filter(c => c.listed > 0);
+    w.centres.forEach((c, k) => { if (c.listed > 0) L.cstate[k] = "check"; else L.cstate[k] = "none"; });
+    add(L, t, "act", listed.length ? `Asked <b>${listed.length}</b> blood centre${listed.length > 1 ? "s" : ""} to confirm their listed stock, all at once. ${listed.map(c => `${c.name} lists ${c.listed} (updated ${hrs(c.age)} ago)`).join("; ")}.<span class="why">Old listings count for little until a centre confirms them.</span>` : `No nearby centre lists any ${w.comp.short} for ${w.group}.`,
+      listed.length ? `Checking stock first. It asked ${pl(listed.length, "blood centre")} to confirm what they really have, instead of trusting the listings.` : `No centre lists this blood. Donors are the only option.`);
+    if (rt > w.T) { L.noDonorNote = true; add(L, t, "decide", `Donors can’t help with this deadline: a freshly donated unit needs about ${hrs(w.comp.test)} of testing. <b>No donors will be messaged.</b>`, `Donors can’t help in time: new blood needs ${hrs(w.comp.test)} of testing. So it won’t bother any donors.`); }
+    if (w.skipped) add(L, t, "note", `${w.skipped} donors skipped: they were messaged for another request in the last 7 days.`, null);
+  }
+  if (w.dupAt !== null && t >= w.dupAt && !L.dupDone) { L.dupDone = true; add(L, t, "note", `The same request arrived again from another WhatsApp group (same patient, hospital, group). <b>Merged</b>, no second search started.`, `A duplicate of the same request came in from another group. It was merged, not treated as a new emergency.`); }
+  // centre replies
+  w.centres.forEach((c, k) => {
+    if (L.cstate[k] === "check" && t >= c.vdelay) {
+      const take = Math.min(c.true, w.need - L.confirmed);
+      L.cfound[k] = c.true; L.cstate[k] = take > 0 ? "res" : (c.true > 0 ? "ok" : "bad");
+      for (let u = 0; u < take; u++) { L.units.push({ kind: "stock", label: `Reserved at ${c.name}`, ready: t }); L.confirmed++; L.real++; }
+      add(L, t, take ? "done" : "obs", `${c.name} confirms <b>${c.true}</b> unit${c.true === 1 ? "" : "s"} on the shelf (listing said ${c.listed}).${take ? ` <b>${take} reserved</b> for this patient.` : ""}`,
+        c.true < c.listed ? `${c.name} listed ${c.listed} but really has ${c.true}. ${take ? `It reserved ${take}.` : "The listing was out of date."}` : `${c.name} confirmed ${c.true}${take ? ` and reserved ${take} for the patient` : ""}.`);
+    }
+  });
+  // arrivals
+  for (const [i, c] of [...L.committed]) {
+    const d = w.donors[i];
+    if (c.real <= t) {
+      L.committed.delete(i);
+      if (d.deferred) {
+        L.state[i] = "deferred";
+        if (!closed() && L.standby.length) {
+          const j = L.standby.shift(), dj = w.donors[j], arr = t + dj.travel;
+          L.committed.set(j, { believed: arr, real: Math.max(arr, Math.max(t, dj.availAt) + dj.travel) }); L.state[j] = "commit";
+          add(L, t, "decide", `${d.id} was <b>deferred at screening</b>. Standby ${dj.id} called in now, arriving ${when(arr)}.`, `${d.id} failed screening. The backup donor ${dj.id} was called in straight away.`);
+        } else add(L, t, "obs", `${d.id} was <b>deferred at screening</b>.`, `${d.id} failed screening, so that unit is open again.`);
+      } else {
+        const ready = c.real + rt; L.state[i] = "collected";
+        if (ready <= w.T) { L.units.push({ kind: "donor", label: `${d.id} donated · ready ${when(ready)}`, ready }); L.confirmed++; L.real++; }
+        add(L, t, ready <= w.T ? "done" : "warn", `${d.id} donated. Blood centre confirms the unit will be ready after testing at <b>${when(ready)}</b>${ready > w.T ? ", after the deadline" : ""}.`, ready <= w.T ? `${d.id} donated. After testing, the unit will be ready at ${when(ready)}, before the deadline.` : `${d.id} donated, but too late for the deadline.`);
+      }
+    } else if (!closed() && t > c.believed + 30) {
+      L.committed.delete(i); L.state[i] = "noshow";
+      add(L, t, "obs", `${d.id} hasn’t arrived 30 min after the expected time. Treated as a no-show.`, `${d.id} didn’t show up. That slot is open again.`);
+    }
+  }
+  // replies
+  for (let i = 0; i < w.n; i++) {
+    if (L.contacted[i] < 0 || L.seen[i]) continue;
+    const d = w.donors[i], at = L.contacted[i] + d.delay; if (at > t || !d.kind) continue;
+    L.seen[i] = true;
+    const smart = L.reader === "llm", saysYes = smart ? d.yes : kwYes(d.text);
+    const realArr = Math.max(at, d.availAt) + d.travel, believed = smart ? realArr : at + d.travel, ok = believed + rt <= w.T;
+    if (!saysYes) { L.state[i] = "declined"; add(L, t, "read", `${d.id}: <q>${d.text}</q> → no.`, null); continue; }
+    const json = smart ? `<code>{ yes, from: "${d.later ? when(d.availAt) : "now"}", unit ready: "${when(realArr + rt)}", in time: ${ok} }</code>` : `<code>{ yes }</code><span class="why">Keyword reader: saw a yes word, assumed “now”.</span>`;
+    if (!ok) { L.state[i] = "late"; add(L, t, "read", `${d.id}: <q>${d.text}</q><br>${json}<span class="why">Willing, but the unit would be ready after the deadline. <b>Not counted.</b></span>`, `${d.id} said yes, but “${d.text}” means the blood would be ready too late. It doesn’t count this donor.`); continue; }
+    if (closed()) { L.state[i] = "released"; continue; }
+    if (L.confirmed + L.committed.size < w.need) {
+      L.committed.set(i, { believed, real: realArr }); L.state[i] = "commit";
+      add(L, t, "read", `${d.id}: <q>${d.text}</q><br>${json}<span class="why">Committed. Sent directions to ${w.centres[0].name}: address, carry photo ID, eat before you come, and buttons for “running late” / “can’t come”.</span>`, `${d.id} can make it in time. It booked them and sent directions and what to bring.`);
+    } else {
+      L.standby.push(i); L.state[i] = "standby";
+      add(L, t, "read", `${d.id}: <q>${d.text}</q><br>${json}<span class="why">Enough donors booked. Held on <b>standby</b> in case someone is deferred.</span>`, `${d.id} also said yes. Kept as a backup instead of being sent away.`);
+    }
+  }
+  // belief
+  const lik = GRID.map(() => 1);
+  for (let i = 0; i < w.n; i++) { if (L.contacted[i] < 0) continue; const d = w.donors[i], e = t - L.contacted[i];
+    GRID.forEach((g, j) => { const pm = Math.min(.95, d.p * g); if (L.seen[i] && d.yes) lik[j] *= pm; else if (L.seen[i]) lik[j] *= (1 - pm) * NO_RATE; else lik[j] *= 1 - (pm + (1 - pm) * NO_RATE) * (1 - Math.exp(-e / MEAN_DELAY)); }); }
+  const z = lik.reduce((s, v, j) => s + v * PRIOR[j], 0); L.post = lik.map((v, j) => v * PRIOR[j] / z);
+  // close
+  if (!closed() && L.confirmed >= w.need) {
+    L.closedAt = t;
+    for (let i = 0; i < w.n; i++) if ((L.contacted[i] >= 0 && !L.seen[i]) || L.state[i] === "standby" || L.committed.has(i)) L.state[i] = "released";
+    L.standby = []; L.committed.clear();
+    w.centres.forEach((c, k) => { if (L.cstate[k] === "check") L.cstate[k] = "listed"; });
+    add(L, t, "done", `${w.need === 1 ? "The unit is" : w.need === 2 ? "Both units are" : "All " + w.need + " units are"} <b>confirmed by a blood centre</b>. Request closed. ${L.msgs ? `Thank-you and stand-down sent to ${L.msgs} donors.` : "No donors were disturbed."} Family sent a ready-to-forward note: <q>Blood arranged, please stop sharing.</q>`,
+      `Done. Every unit is confirmed by a blood centre. ${L.msgs ? "Donors still waiting were thanked and stood down." : "No donor had to be messaged."} The family got a message to stop the request circulating.`);
+  }
+  // act
+  const pendingChecks = w.centres.filter((c, k) => L.cstate[k] === "check");
+  const lastCheck = pendingChecks.length ? Math.max(...pendingChecks.map(c => c.vdelay)) : 0;
+  const canWait = pendingChecks.length && (w.T - lastCheck - rt - 120) > 0;
+  if (!closed() && canWait && !L.waitNoted) { L.waitNoted = true; add(L, t, "decide", `Waiting up to ${lastCheck} min for blood centres to reply before messaging any donor. The deadline allows it.`, `It holds off on donors for ${lastCheck} minutes while blood centres reply. If stock covers the need, no donor gets disturbed.`); }
+  if (!closed() && !canWait) {
+    const rem = w.need - L.confirmed, cand = w.order.filter(i => L.contacted[i] < 0), base = paths(L, t), before = pAtLeast(base, rem);
+    let P = before; const added = [];
+    for (const i of cand) { if (P >= TARGET || added.length >= 10) break; const q = qOf(L, i, t, 0); if (q < 0.01) continue; added.push(i); base.push(q); P = pAtLeast(base, rem); }
+    if (added.length) {
+      added.forEach(i => { L.contacted[i] = t; L.state[i] = "messaged"; }); L.msgs += added.length;
+      const dropped = L.pHist.length && L.pHist[L.pHist.length - 1] - before > 0.08;
+      add(L, t, "decide", `Chance ${pct(before)} → messaged <b>${added.length}</b> donor${added.length > 1 ? "s" : ""} → now <b>${pct(P)}</b>.<span class="why">${t === 0 || !L.msgsBefore ? "Smallest batch that makes the deadline likely, not everyone." : dropped ? `Fewer replies than expected (reply rate now ${mhat(L).toFixed(2)}× normal).` : "Topping up to stay above 90%."}</span>`,
+        dropped ? `Replies are slower than usual, so the chance dropped to ${pct(before)}. It messaged ${added.length} more donors to get back above 90%.` : !L.msgsBefore ? `Stock can’t cover it, so it messaged the ${added.length} best-matched donors: just enough to make the deadline likely (${pct(P)}), not everyone.` : `It messaged ${added.length} more donors to keep the chance above 90%.`);
+      L.msgsBefore = true;
+    }
+    const ceil = pAtLeast(base.concat(cand.filter(i => !added.includes(i)).map(i => qOf(L, i, t, 0))), rem);
+    if (L.escalatedAt === null && ceil < ESC) {
+      L.escalatedAt = t;
+      add(L, t, "warn", `Even messaging every allowed donor gives only <b>${pct(ceil)}</b>. <b>Handed to a person</b> with a summary: ${L.msgs} donors messaged, ${L.committed.size} on the way, ${L.confirmed} confirmed, centres checked: ${w.centres.map(c => c.name).join(", ")}. Suggested next: neighbouring districts, rare donor registry.`,
+        `It’s unlikely to make the deadline (${pct(ceil)}), so it alerted a coordinator now, ${hrs(w.T - t)} early, with a summary of everything tried. It keeps working in the background.`);
+    }
+    L.P = P;
+  }
+  L.pHist.push(closed() ? 1 : L.P);
+}
+
+function stepBase(L, t) {
+  const w = L.w, rt = w.comp.collect + w.comp.test, closed = () => L.closedAt !== null;
+  if (t === 0) {
+    const best = w.centres.map((c, k) => [c, k]).filter(([c]) => c.listed > 0).sort((a, b) => b[0].listed - a[0].listed || a[0].km - b[0].km)[0];
+    if (best) {
+      const [c, k] = best; L.picked = k; L.pickedArrive = 45; L.cstate[k] = "check";
+      L.stockClaim = Math.min(c.listed, w.need);
+      add(L, t, "obs", `Portal shows <b>${c.listed}</b> at ${c.name}. Family is sent there.`, null);
+      if (L.stockClaim >= w.need) { L.closedAt = t; L.said = "located"; add(L, t, "done", `Listing covers the need. Marked <b>blood found</b>.`, `Today’s approach: the portal shows ${pl(c.listed, "unit")} at ${c.name}, so the family is told blood is found.`); }
+    } else { L.pickedArrive = 0; add(L, t, "obs", `No stock listed. Family told to arrange donors.`, null); }
+  }
+  if (L.picked !== null && t >= L.pickedArrive && L.cstate[L.picked] === "check") {
+    const c = w.centres[L.picked], take = Math.min(c.true, w.need);
+    L.cstate[L.picked] = take ? "res" : "bad"; L.cfound[L.picked] = c.true; L.stockClaim = 0;
+    for (let u = 0; u < take; u++) { L.units.push({ kind: "stock", label: `Issued at ${c.name}`, ready: t }); L.confirmed++; L.real++; }
+    add(L, t, "obs", `Family reaches ${c.name}: only <b>${c.true}</b> available.`, null);
+    if (L.confirmed < w.need) { L.closedAt = null; L.said = null; add(L, t, "warn", `Short by ${w.need - L.confirmed}. Family told to <b>arrange donors</b>.`, `Today’s approach: the family reached ${c.name} and found ${c.true ? "only " + c.true : "nothing"}. Now they’re told to find donors themselves.`); }
+  }
+  for (const [i, c] of [...L.committed]) {
+    if (c.real <= t) { L.committed.delete(i); const d = w.donors[i];
+      if (d.deferred) { L.state[i] = "deferred"; add(L, t, "obs", `${d.id} was deferred at screening.${closed() ? " The request was already marked done; nobody looks for a replacement." : ""}`, null); }
+      else { L.state[i] = "collected"; const ready = c.real + rt; if (ready <= w.T) { L.real++; L.units.push({ kind: "donor", label: `${d.id} donated · ready ${when(ready)}`, ready }); } }
+    }
+  }
+  for (let i = 0; i < w.n; i++) {
+    if (L.contacted[i] < 0 || L.seen[i]) continue; const d = w.donors[i], at = L.contacted[i] + d.delay; if (at > t || !d.kind) continue;
+    L.seen[i] = true;
+    if (!kwYes(d.text)) { L.state[i] = "declined"; continue; }
+    if (closed()) { L.state[i] = "released"; continue; }
+    L.committed.set(i, { believed: at + d.travel, real: Math.max(at, d.availAt) + d.travel }); L.state[i] = "commit"; L.claims.push(i);
+    add(L, t, "read", `${d.id}: <q>${d.text}</q> → counted as a donor ✓`, null);
+  }
+  if (!closed() && L.confirmed + L.committed.size + L.stockClaim >= w.need && L.claims.length) {
+    L.closedAt = t; L.said = "fulfilled";
+    add(L, t, "done", `Enough people said yes. Request marked <b>fulfilled</b>.`, `Today’s approach: enough donors said yes, so the request is marked fulfilled.`);
+  }
+  if (!closed() && (L.picked === null || L.cstate[L.picked] !== "check") && t - L.lastWave >= 30 && w.need - L.confirmed - L.committed.size > 0) {
+    const cand = w.order.filter(i => L.contacted[i] < 0).slice(0, 10);
+    if (cand.length) { cand.forEach(i => { L.contacted[i] = t; L.state[i] = "messaged"; }); L.msgs += cand.length; L.lastWave = t; add(L, t, "act", `Request forwarded to the next <b>${cand.length}</b> donors.`, null); }
+  }
+}
+
+function runHeadless(w, which, reader = "llm") { const L = makeLane(w, which === "agent", reader); for (let t = 0; t <= w.T; t += w.tick) (L.agent ? stepAgent : stepBase)(L, t); return L; }
+
+// pick a representative seed for each preset
+function findSeed(key) {
+  const p = SCENARIOS[key].p; let fb = null;
+  for (let s = 1; s < 3000; s++) {
+    const w = makeWorld(s, p), A = runHeadless(w, "agent"), B = runHeadless(w, "base");
+    const aOk = A.real >= w.need, bFalse = B.closedAt !== null && B.real < w.need;
+    if (key === "stock") { if (aOk && A.msgs === 0 && bFalse) return w; if (aOk && !fb) fb = w; }
+    if (key === "dengue") {
+      const late = A.state.includes("late"), promo = A.log.some(e => e.html.includes("Standby"));
+      if (aOk && bFalse && late && promo && A.msgs <= 16) return w; if (aOk && bFalse && late && !fb) fb = w;
+    }
+    if (key === "rare") { if (A.msgs > 0 && A.escalatedAt !== null && A.escalatedAt >= 30 && A.escalatedAt <= 300) return w; if (!fb && A.escalatedAt !== null && A.msgs > 0) fb = w; }
+  }
+  return fb || makeWorld(3, p);
+}
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+let key = "stock", W, LA, LB, t = 0, done = false, timer = null, queue = [], finished = false;
+const cache = {};
+
+function scenarioButtons() {
+  $("scenarios").innerHTML = Object.entries(SCENARIOS).map(([k, s]) => `<button class="scn" data-k="${k}" aria-pressed="${k === key}"><b>${s.title}</b><span>${s.sub}</span></button>`).join("");
+  $("scenarios").querySelectorAll(".scn").forEach(b => b.onclick = () => { key = b.dataset.k; scenarioButtons(); setup(); });
+}
+
+function setup() {
+  stop();
+  if (key === "random") { const s = Math.floor(Math.random() * 1e6); W = makeWorld(s, { ...randomPreset(rng(s + 1)), msg: null }); }
+  else W = cache[key] || (cache[key] = findSeed(key));
+  LA = makeLane(W, true, "llm"); LB = makeLane(W, false, "kw"); t = 0; done = false; queue = []; finished = false;
+  $("msg").textContent = W.msg || `Need ${W.group} ${W.comp.short}, ${W.need} unit${W.need > 1 ? "s" : ""}, urgent. Please share.`;
+  $("msgnote").textContent = "RaktTrace reads this message, fills in the fields on the right, and asks the coordinator for anything missing before acting.";
+  $("facts").innerHTML = [["Blood group", W.group], ["Needed", `${W.need} unit${W.need > 1 ? "s" : ""} of ${W.comp.short}`], ["Deadline", when(W.T)],
+    ["Testing time", `~${hrs(W.comp.test)} after donation`], ["Donors nearby", `${W.n} opted in`], ["Blood centres", `${W.centres.length} nearby`]]
+    .map(([k, v]) => `<div><b>${k}</b>${v}</div>`).join("");
+  $("deadline").textContent = "deadline " + when(W.T);
+  $("laneB").innerHTML = laneHTML(false); $("laneA").innerHTML = laneHTML(true);
+  [LB, LA].forEach(L => { L.el = L.agent ? $("laneA") : $("laneB"); L.el.querySelector(".dgrid").innerHTML = W.order.map(i => `<div class="d" title="${W.donors[i].id} · ${W.donors[i].km} km"></div>`).join(""); });
+  setNarr("Start", "Press <b>Next step</b>. Each step jumps to the next thing that happens, on either side.");
+  $("next").disabled = false; $("play").disabled = false; $("play").textContent = "Auto-play"; $("next").textContent = "Next step"; $("next").dataset.final = "";
+  render();
+}
+
+function laneHTML(A) {
+  return `<div class="lhead"><div><div class="label">${A ? "With RaktTrace" : "Today"}</div><h2>${A ? "RaktTrace agent" : "How it usually goes"}</h2>
+    <p>${A ? "Checks stock first, messages only as many donors as needed, closes only when a blood centre confirms." : "Trust the listing, then forward the request to donors and call it done when enough people say yes."}</p></div>
+    <span class="status" data-r="status">Working</span></div>
+    <div data-r="verdict" hidden></div>
+    ${A ? `<div class="chance"><div><div class="num" data-r="p">–</div><div class="cap">chance of blood ready<br>by the deadline</div></div><svg data-r="spark" viewBox="0 0 200 54" preserveAspectRatio="none" role="img" aria-label="Chance over time"></svg></div>` : ""}
+    <div class="sect"><div class="label">Units for the patient</div><div class="rows" data-r="units"></div></div>
+    <div class="sect"><div class="label">Blood centres</div><div class="centres" data-r="centres"></div></div>
+    <div class="nums"><div><b data-r="msgs">0</b><span>donors messaged</span></div><div><b data-r="yes">0</b><span>${A ? "usable yes replies" : "yes replies counted"}</span></div><div><b data-r="conf">0</b><span>units really ready</span></div></div>
+    <div class="sect"><div class="label">Donors, best match first</div><div class="dgrid"></div></div>
+    <details class="logbox" ${A ? "open" : ""}><summary>${A ? "Agent’s decision log" : "What happened"}</summary><ul class="log" data-r="log"></ul></details>`;
+}
+
+function setNarr(who, html) { $("narr").innerHTML = `<span class="who">${who}</span>${html}`; }
+
+function renderLane(L) {
+  const el = L.el, q = r => el.querySelector(`[data-r="${r}"]`), w = W, A = L.agent;
+  // status
+  const st = q("status");
+  if (A) { if (L.closedAt !== null) { st.textContent = "Confirmed"; st.className = "status conf"; } else if (L.escalatedAt !== null) { st.textContent = "Escalated · still working"; st.className = "status warn"; } else { st.textContent = "Working"; st.className = "status"; } }
+  else { if (L.closedAt !== null) { st.textContent = L.said === "located" ? "Blood found ✓" : "Fulfilled ✓"; st.className = "status done"; } else { st.textContent = "Searching"; st.className = "status"; } }
+  // chance
+  if (A) {
+    const p = L.pHist.length ? L.pHist[L.pHist.length - 1] : null, n = q("p");
+    n.textContent = p === null ? "–" : pct(p); n.style.color = p === null ? "" : p >= .9 ? "var(--ok)" : p < ESC ? "var(--accent)" : "var(--warn)";
+    const N = Math.floor(w.T / w.tick) + 1, pts = L.pHist.map((v, k) => `${(k / Math.max(1, N - 1) * 200).toFixed(1)},${(52 - v * 50).toFixed(1)}`).join(" ");
+    q("spark").innerHTML = `<line x1="0" x2="200" y1="${52 - .9 * 50}" y2="${52 - .9 * 50}" stroke="var(--ok)" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke"/><line x1="0" x2="200" y1="${52 - .3 * 50}" y2="${52 - .3 * 50}" stroke="var(--accent)" stroke-dasharray="3 3" stroke-width="1" vector-effect="non-scaling-stroke"/>${pts ? `<polyline points="${pts}" fill="none" stroke="var(--ink)" stroke-width="2" vector-effect="non-scaling-stroke"/>` : ""}`;
+  }
+  // units
+  const rows = L.units.map(u => `<div class="pill conf">${u.label}</div>`);
+  if (A) { for (const [i, c] of L.committed) rows.push(`<div class="pill way">${w.donors[i].id} on the way · ready ~${when(c.believed + w.comp.collect + w.comp.test)}</div>`); }
+  else { if (L.stockClaim) for (let u = 0; u < L.stockClaim && rows.length < w.need; u++) rows.push(`<div class="pill yes">Listed at ${w.centres[L.picked].name} ✓</div>`);
+    L.claims.forEach(i => { const s = L.state[i]; if (s !== "collected" || !L.units.some(u => u.label.startsWith(w.donors[i].id))) rows.push(`<div class="pill yes">${w.donors[i].id} said yes ✓${s === "deferred" ? " · later deferred" : ""}</div>`); }); }
+  while (rows.length < w.need) rows.push(`<div class="pill">Not secured yet</div>`);
+  if (A) L.standby.forEach(j => rows.push(`<div class="pill stand">Backup · ${w.donors[j].id}</div>`));
+  q("units").innerHTML = rows.map((r, k) => `<div class="row"><span class="k">${k < w.need ? "Unit " + (k + 1) : "Backup"}</span>${r}</div>`).join("");
+  // centres
+  q("centres").innerHTML = w.centres.map((c, k) => {
+    const s = L.cstate[k], f = L.cfound[k];
+    const cls = s === "check" ? "check" : s === "res" ? "res" : s === "bad" ? "bad" : s === "ok" ? "ok" : "";
+    const txt = f !== null ? `confirmed ${f}${s === "res" ? " · reserved" : ""}` : s === "check" ? (A ? "checking…" : "family on the way…") : (A || L.picked === k) ? `lists ${c.listed}` : `lists ${c.listed} · not checked`;
+    return `<span class="ctr ${cls}"><b>${c.name}</b> · ${txt}</span>`;
+  }).join("");
+  q("msgs").textContent = L.msgs;
+  q("yes").textContent = A ? L.state.filter(s => ["commit", "standby", "collected", "deferred", "noshow"].includes(s)).length + (L.closedAt !== null ? 0 : 0) : L.claims.length;
+  q("conf").textContent = `${L.real} / ${w.need}`;
+  const cells = el.querySelectorAll(".dgrid .d");
+  w.order.forEach((i, k) => { cells[k].className = "d" + (L.state[i] ? " " + L.state[i] : ""); });
+  q("log").innerHTML = L.log.slice().reverse().map(e => `<li><span class="t">${clock(e.t)}</span><span><span class="tag ${e.tag === "decide" ? "decide" : e.tag === "done" ? "done" : e.tag === "warn" ? "warn" : ""}">${({ act: "Action", decide: "Decision", done: e.tag === "done" ? "Confirmed" : "", obs: "Update", read: "Reply", warn: "Alert", note: "Note" })[e.tag]}</span>${e.html}</span></li>`).join("") || `<li><span class="t"></span><span class="muted">Nothing yet.</span></li>`;
+  // verdict
+  const v = q("verdict");
+  if (finished) {
+    const ok = L.real >= w.need;
+    const claim = A ? (L.closedAt !== null ? `It closed the request at ${clock(L.closedAt)} once blood centres confirmed ${w.need > 1 ? "every unit" : "the unit"}${L.msgs ? `, after messaging ${L.msgs} donor${L.msgs === 1 ? "" : "s"}` : ", without messaging any donor"}.` + (L.escalatedAt !== null ? ` It had also alerted a coordinator early.` : "") : L.escalatedAt !== null ? `It alerted a coordinator at ${clock(L.escalatedAt)}, ${hrs(w.T - L.escalatedAt)} before the deadline.` : "It never closed.")
+      : (L.closedAt !== null ? `It said “${L.said === "located" ? "blood found" : "fulfilled"}”${ok ? "." : ", but blood was still missing. Nobody was warned."}` : "The family was still searching at the deadline.");
+    v.hidden = false; v.className = "verdict " + (ok ? "good" : "bad");
+    v.innerHTML = `At the deadline: ${L.real} of ${w.need} unit${w.need > 1 ? "s" : ""} actually ready ${ok ? "✓" : "✗"}<small>${claim}</small>`;
+  } else v.hidden = true;
+}
+
+function render() {
+  $("clock").firstChild.nodeValue = clock(t);
+  $("prog").style.width = Math.min(100, t / W.T * 100) + "%";
+  renderLane(LB); renderLane(LA);
+}
+
+function advance() {
+  // one tick on both lanes; returns new plain-language events
+  const la = LA.log.length, lb = LB.log.length;
+  stepAgent(LA, t); stepBase(LB, t);
+  const ev = { a: LA.log.slice(la).filter(e => e.plain), b: LB.log.slice(lb).filter(e => e.plain) };
+  if (t + W.tick > W.T) { done = true; } else t += W.tick;
+  return ev;
+}
+function finish() {
+  stop(); $("next").disabled = true; $("play").disabled = true;
+  const a = LA.real >= W.need, b = LB.real >= W.need;
+  setNarr("Deadline " + clock(W.T), `${b ? "Today’s approach got the blood too" : `Today’s approach ended with <b>${LB.real} of ${pl(W.need, "unit")}</b>${LB.closedAt !== null ? " while saying it was done" : ""}`}. RaktTrace ${a ? `had <b>${W.need === 2 ? "both units" : W.need > 1 ? "all " + W.need + " units" : "the unit"}</b> confirmed` : `didn’t make it, but warned a person ${LA.escalatedAt !== null ? hrs(W.T - LA.escalatedAt) + " early" : "late"}`}${a && LA.msgs === 0 ? ", without messaging a single donor" : a ? `, messaging ${LA.msgs} donors` : ""}.`);
+}
+function nextStep() {
+  if (finished) return;
+  while (!queue.length && !done) {
+    const ev = advance();
+    ev.b.forEach(e => queue.push(["Today", e])); ev.a.forEach(e => queue.push(["RaktTrace", e]));
+    render();
+  }
+  if (queue.length) {
+    const [who, e] = queue.shift();
+    const txt = e.plain.replace("Today’s approach: ", ""); setNarr(who + " · " + clock(e.t), txt.charAt(0).toUpperCase() + txt.slice(1));
+    if (done && !queue.length) $("next").textContent = "See the result";
+    return;
+  }
+  finished = true; render(); finish();
+}
+function play() {
+  if (timer) { stop(); return; }
+  $("play").textContent = "Pause";
+  timer = setInterval(() => { nextStep(); if ($("next").disabled) stop(); }, 1800);
+}
+function stop() { if (timer) clearInterval(timer); timer = null; if (!done) $("play").textContent = "Auto-play"; }
+
+$("next").onclick = () => { stop(); nextStep(); };
+$("play").onclick = play;
+$("restart").onclick = setup;
+
+// ---------- benchmark ----------
+$("runBench").onclick = () => {
+  const N = +$("benchN").value, btn = $("runBench"); btn.disabled = true;
+  const acc = { b: [], k: [], a: [] }; let s = 0;
+  const chunk = () => {
+    const end = Math.min(N, s + 20);
+    for (; s < end; s++) {
+      const seed = 50000 + s, w = makeWorld(seed, randomPreset(rng(seed + 1)));
+      [["b", "base", "kw"], ["k", "agent", "kw"], ["a", "agent", "llm"]].forEach(([k, which, rd]) => {
+        const L = runHeadless(w, which, rd), ok = L.real >= w.need;
+        acc[k].push({ ok, msgs: L.msgs, fc: L.closedAt !== null && !ok, zero: ok && L.msgs === 0, lead: ok ? null : (L.escalatedAt === null ? 0 : w.T - L.escalatedAt) });
+      });
+    }
+    btn.textContent = `Running ${s}/${N}`;
+    if (s < N) setTimeout(chunk, 0); else { show(acc, N); btn.disabled = false; btn.textContent = "Run again"; }
+  };
+  chunk();
+};
+function show(acc, N) {
+  const S = a => { const L = a.filter(x => x.lead !== null).map(x => x.lead).sort((x, y) => x - y);
+    return { ok: a.filter(x => x.ok).length / a.length, msgs: a.reduce((s, x) => s + x.msgs, 0) / a.length, fc: a.filter(x => x.fc).length / a.length, zero: a.filter(x => x.zero).length / a.length, lead: L.length ? L[Math.floor(L.length / 2)] : 0 }; };
+  const r = (name, x, cls = "") => `<tr class="${cls}"><td>${name}</td><td class="n">${(x.ok * 100).toFixed(1)}%</td><td class="n">${(x.fc * 100).toFixed(1)}%</td><td class="n">${x.msgs.toFixed(1)}</td><td class="n">${(x.zero * 100).toFixed(0)}%</td><td class="n">${x.lead ? hrs(x.lead) : "none"}</td></tr>`;
+  $("benchOut").innerHTML = `<table><thead><tr><th>Approach</th><th class="n">Blood ready on time</th><th class="n">Said done, wasn’t</th><th class="n">Donors messaged</th><th class="n">Solved with zero donors</th><th class="n">Warning before a failure</th></tr></thead><tbody>
+    ${r("How it usually goes", S(acc.b))}${r("RaktTrace, simple keyword reading", S(acc.k))}${r("RaktTrace", S(acc.a), "us")}</tbody></table>
+    <p class="fine">${N} random requests. “Warning before a failure” is the median time between the alert and the deadline, for requests that failed; “none” means nobody was warned.</p>`;
+}
+
+scenarioButtons();
+setup();
+})();
+</script>
+
+</body>
+</html>
